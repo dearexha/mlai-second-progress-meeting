@@ -1,0 +1,4 @@
+results/*
+datasets/SimpleWikipedia_v1/*
+datasets/SimpleWikipedia_articles/*
+__pycache__
