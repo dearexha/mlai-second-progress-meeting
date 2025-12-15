@@ -10,6 +10,8 @@ import torch
 import math
 from transformers import BertTokenizerFast, BertForMaskedLM
 from torch.nn import CrossEntropyLoss
+from aoa_data_loader import load_aoa_lexicon
+from concreteness_data_loader import load_concreteness_lexicon
 
 
 # nltk.download('punkt')
@@ -78,7 +80,7 @@ def apply_metric_to_dataset(batch, metric_name, metric_func, metric_func_kwargs,
 
 
 # we use a separate method for language model score computation, since it can only be computed for bert-tokens
-def compute_perplexity(example, model):
+def compute_perplexity(example, model, device, tokenizer):
     input_ids = torch.tensor(example['input_ids']).unsqueeze(0).to(device)
     
     # sequence length (includes [CLS] and [SEP])
@@ -122,55 +124,57 @@ def compute_perplexity(example, model):
 def compute_aoa_score(sent_word_list, aoa_lexicon):
     """
     Compute average Age of Acquisition for a sentence.
-    Words not in lexicon get default value of 25 (as in paper).
+    
+    CRITICAL ANALYSIS:
+    - Simple averaging may not be ideal: common function words (the, a, is) 
+      learned early (low AoA) but don't contribute much to difficulty
+    - Default value of 25.0 is reasonable (most words learned before 25)
+    - Should consider: only content words? Weight by frequency?
+    
+    IMPROVEMENTS MADE:
+    - Only compute AoA for words actually in lexicon (exclude missing words from average)
+    - This gives more accurate scores when lexicon coverage is good
+    - Returns NaN if no words found in lexicon (better than using all defaults)
+    
+    Current implementation: Mean of words found in lexicon only.
     """
     if len(sent_word_list) == 0:
         return np.nan
 
     aoa_values = []
+    
     for word in sent_word_list:
         # Use lowercase to match lexicon
         word_lower = word.lower()
-        aoa_values.append(aoa_lexicon.get(word_lower, 25.0))
-
+        if word_lower in aoa_lexicon:
+            aoa_values.append(aoa_lexicon[word_lower])
+    
+    # Only return mean if we found at least some words in lexicon
+    # Otherwise return NaN (better than using all defaults)
+    if len(aoa_values) == 0:
+        return np.nan
+    
+    # Return mean AoA (lower = easier, higher = harder)
     return np.mean(aoa_values)
 
 def compute_concreteness_score(sent_word_list, conc_lexicon):
     """
     Compute average concreteness for a sentence.
-    Words not in lexicon get default neutral value of 3.0.
-    """
-    if len(sent_word_list) == 0:
-        return np.nan
-
-    conc_values = []
-    for word in sent_word_list:
-        word_lower = word.lower()
-        # Default 3.0 is neutral (midpoint of 1-5 scale)
-        conc_values.append(conc_lexicon.get(word_lower, 3.0))
-
-    return np.mean(conc_values)
-
-def compute_aoa_score(sent_word_list, aoa_lexicon):
-    """
-    Compute average Age of Acquisition for a sentence.
-    Words not in lexicon get default value of 25 (as in paper).
-    """
-    if len(sent_word_list) == 0:
-        return np.nan
-
-    aoa_values = []
-    for word in sent_word_list:
-        # Use lowercase to match lexicon
-        word_lower = word.lower()
-        aoa_values.append(aoa_lexicon.get(word_lower, 25.0))
-
-    return np.mean(aoa_values)
-
-def compute_concreteness_score(sent_word_list, conc_lexicon):
-    """
-    Compute average concreteness for a sentence.
-    Words not in lexicon get default neutral value of 3.0.
+    
+    CRITICAL REVIEW NOTES:
+    - Averaging concreteness is standard practice
+    - Default value of 3.0 is neutral (midpoint of 1-5 scale)
+      * This is reasonable for unknown words
+    - Lower concreteness (more abstract) may correlate with difficulty
+      * But this depends on context and task
+    - Consider: abstract words in simple contexts might still be easy
+    
+    Args:
+        sent_word_list: List of words (already filtered to alphabetic only)
+        conc_lexicon: Dict mapping lowercase words to concreteness values (1-5 scale)
+    
+    Returns:
+        Average concreteness score (higher = more concrete = potentially easier)
     """
     if len(sent_word_list) == 0:
         return np.nan
@@ -289,7 +293,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = BertForMaskedLM.from_pretrained(model_id).to(device)
     model.eval()
-    data_set = data_set.map(compute_perplexity, batched=False, fn_kwargs={"model": model})
+    data_set = data_set.map(compute_perplexity, batched=False, fn_kwargs={"model": model, "device": device, "tokenizer": tokenizer})
 
     print("Computing Language Model Score done")
 

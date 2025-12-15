@@ -1,3 +1,5 @@
+import pandas as pd
+
 def load_aoa_lexicon(filepath="AoA_ratings_Kuperman_et_al_BRM.csv"):
     """
     Load AoA lexicon. Expected columns: Word, Rating.Mean

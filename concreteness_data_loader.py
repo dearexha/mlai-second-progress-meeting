@@ -1,3 +1,5 @@
+import pandas as pd
+
 def load_concreteness_lexicon(filepath="Concreteness_ratings_Brysbaert_et_al_BRM.csv"):
     """
     Load concreteness lexicon. Expected columns: Word, Conc.M
