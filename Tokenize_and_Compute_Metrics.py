@@ -189,12 +189,12 @@ def compute_concreteness_score(sent_word_list, conc_lexicon):
 
 if __name__ == "__main__":
 
-    dataset_name = "SimpleWikipedia"
-    # dataset_name = "OneStopEnglish"
+    # dataset_name = "SimpleWikipedia"
+    dataset_name = "OneStopEnglish"
     num_proc = 8  # number of processors to use for computing the metrics/ tokenization
 
     print("Loading raw dataset ...")
-    raw_dataset = load_from_disk(f"./results/hf_datasets/{dataset_name}_raw")
+    raw_dataset = load_from_disk(f"./results/{dataset_name}_raw")
     print("Loading raw dataset done")
 
     print("Tokenizing dataset ...")
@@ -204,8 +204,8 @@ if __name__ == "__main__":
     tokenizer = BertTokenizerFast.from_pretrained(model_id)
 
     print("Loading AoA and Concreteness lexicons...")
-    aoa_lexicon = load_aoa_lexicon("./lexicons/AoA_ratings_Kuperman_et_al_BRM.csv")
-    conc_lexicon = load_concreteness_lexicon("./lexicons/Concreteness_ratings_Brysbaert_et_al_BRM.csv")
+    aoa_lexicon = load_aoa_lexicon("aoa_words.csv")
+    conc_lexicon = load_concreteness_lexicon("concreteness_words.csv")
     print(f"AoA lexicon size: {len(aoa_lexicon)}")
     print(f"Concreteness lexicon size: {len(conc_lexicon)}")
     
@@ -219,43 +219,14 @@ if __name__ == "__main__":
 
     print("Tokenizing dataset done")
 
-    print("Computing vocabulary histograms ...")
+    # SKIP vocabulary histograms - not needed for AoA and Concreteness only
+    # print("Computing vocabulary histograms ...")
+    # ... (skipped for efficiency)
 
-    # compute vocabulary counts for words and tokens over the entire corpus
-    label_feature = raw_dataset.features["label"]
-    label_names = label_feature.names
+    print("Computing AoA and Concreteness metrics ...")
 
-    word_corpus_vocab_hist_list = [Counter() for label in label_names]
-    token_corpus_vocab_hist_list = [Counter() for label in label_names]
-
-    for example in tqdm(data_set):
-        # compute the word histogram
-        word_list = nltk.word_tokenize(example["text"])
-        word_list = [word for word in word_list if word.isalpha()] # comment out if words with non alphabetic letters are also of interest
-        word_hist = Counter(word_list)
-
-        # compute the token histogram
-        token_hist = Counter(tokenizer.convert_ids_to_tokens(example["input_ids"]))
-
-        # add to vocab histogram for the specific class
-        word_corpus_vocab_hist_list[example["label"]].update(word_hist)
-        token_corpus_vocab_hist_list[example["label"]].update(token_hist)
-
-    
-    word_corpus_vocab_counts = sum(word_corpus_vocab_hist_list, Counter())
-    token_corpus_vocab_counts = sum(token_corpus_vocab_hist_list, Counter())
-
-    print("Computing vocabulary histograms done")
-
-    print("Computing traditional evaluation metrics ...")
-
-    dic = pyphen.Pyphen(lang="en_US")
-
-    metric_and_kwargs_list = [{"metric_name":"sentence_length", "metric_func":compute_sentence_length, "metric_func_kwargs":{}},
-                              {"metric_name":"word_rarity", "metric_func":compute_word_rarity, "metric_func_kwargs":{"corpus_vocab_counts": word_corpus_vocab_counts}},
-                              {"metric_name":"fre_score", "metric_func":compute_fre_score, "metric_func_kwargs":{"dic": dic}},
-                              {"metric_name":"shannon_entropy", "metric_func":compute_Shannon_entropy, "metric_func_kwargs":{}},
-                              {"metric_name":"ttr", "metric_func":compute_TTR, "metric_func_kwargs":{}},
+    # Only compute AoA and Concreteness metrics
+    metric_and_kwargs_list = [
                               {"metric_name": "aoa_score", "metric_func": compute_aoa_score, "metric_func_kwargs": {"aoa_lexicon": aoa_lexicon}},
                               {"metric_name": "concreteness_score", "metric_func": compute_concreteness_score, "metric_func_kwargs": {"conc_lexicon": conc_lexicon}}
                               ]
@@ -269,38 +240,26 @@ if __name__ == "__main__":
             fn_kwargs={**metric, "words_are_tokens":False, "tokenizer": tokenizer}
         )
 
-    # compute the metrics based on tokens
+    # compute the metrics based on tokens (only AoA and Concreteness)
     for metric in metric_and_kwargs_list:
-        if metric["metric_name"] == "word_rarity":
-            data_set = data_set.map(
-                apply_metric_to_dataset,
-                batched=True,
-                num_proc=num_proc,
-                fn_kwargs={"metric_name":"word_rarity", "metric_func":compute_word_rarity, "metric_func_kwargs":{"corpus_vocab_counts": token_corpus_vocab_counts}, "words_are_tokens":True, "tokenizer": tokenizer}
-            )
-        else:
-            data_set = data_set.map(
-                apply_metric_to_dataset,
-                batched=True,
-                num_proc=num_proc,
-                fn_kwargs={**metric, "words_are_tokens":True, "tokenizer": tokenizer}
-            )
-    print("Computing traditional evaluation metrics done")
+        data_set = data_set.map(
+            apply_metric_to_dataset,
+            batched=True,
+            num_proc=num_proc,
+            fn_kwargs={**metric, "words_are_tokens":True, "tokenizer": tokenizer}
+        )
+    print("Computing AoA and Concreteness metrics done")
 
-    # compute average perplexity for each sentence from a pretrained bert model (language model score)
-    print("Computing Language Model Score ...")
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = BertForMaskedLM.from_pretrained(model_id).to(device)
-    model.eval()
-    data_set = data_set.map(compute_perplexity, batched=False, fn_kwargs={"model": model, "device": device, "tokenizer": tokenizer})
-
-    print("Computing Language Model Score done")
+    # SKIP perplexity computation - not needed for AoA and Concreteness only
+    # print("Computing Language Model Score ...")
+    # ... (skipped for efficiency)
 
     print("Saving results to disk ...")
 
     # save HF dataset to disk
-    data_set.save_to_disk(f"./results/{dataset_name}_tokenized_and_measured")
+    import os
+    os.makedirs("./results/hf_datasets", exist_ok=True)
+    data_set.save_to_disk(f"./results/hf_datasets/{dataset_name}_tokenized_and_measured")
 
     print("Saving results to disk done")
 

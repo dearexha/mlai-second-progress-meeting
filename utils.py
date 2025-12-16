@@ -33,11 +33,18 @@ def compute_histograms(dataset_name, excluded_columns=["text", "label", "input_i
         col:[Counter() for label in label_names] for col in column_names
     } 
     for example in tqdm(dataset):
-        # ignore sentences of length 0
-        if example["sentence_length_words"] == 0:
+        # ignore sentences of length 0 (if sentence_length_words exists)
+        # Otherwise, skip empty text
+        if "sentence_length_words" in example:
+            if example["sentence_length_words"] == 0:
+                continue
+        elif "text" in example and len(example["text"].strip()) == 0:
             continue
         
         for col in column_names:
+            # Skip NaN values
+            if col not in example or (isinstance(example[col], float) and (np.isnan(example[col]) or np.isinf(example[col]))):
+                continue
             if col in bounds:
                 if bounds[col]["min"] <= example[col] <= bounds[col]["max"]:
                     metric_hists[col][example["label"]][example[col]] += 1

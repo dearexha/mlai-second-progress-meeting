@@ -1,6 +1,6 @@
 import pandas as pd
 
-def load_concreteness_lexicon(filepath="Concreteness_ratings_Brysbaert_et_al_BRM.csv"):
+def load_concreteness_lexicon(filepath="concreteness_words.csv"):
     """
     Load concreteness lexicon. Expected columns: Word, Conc.M
     Returns: dict {word_lowercase: conc_value}
